@@ -8,6 +8,7 @@ import (
     "io/ioutil"
     "strings"
     "encoding/json"
+    "github.com/bradfitz/gomemcache/memcache"
 )
 
 type ResponseData struct {
@@ -16,7 +17,7 @@ type ResponseData struct {
     StatusCode int
 }
 
-var cache = make(map[string][]byte)
+var mc = memcache.New("localhost:11211")
 
 func main(){
     http.HandleFunc("/", serveResponse)
@@ -32,8 +33,11 @@ func serveResponse(w http.ResponseWriter, r *http.Request) {
     responseData := loadFromCache(cacheKey)
 
     if responseData == nil {
+        fmt.Println("Not found on Cache: ", cacheKey)
         responseData = loadFromOrigin(r.URL)
         cacheResponse(cacheKey, *responseData)
+    }else{
+        fmt.Println("Serving from cache: ", cacheKey)
     }
 
     tunnelResponse(*responseData, w)
@@ -47,22 +51,24 @@ func cacheResponse(key string, data ResponseData) {
     if err != nil {
         fmt.Println("error:", err)
     }
-    cache[key] = dump
+    mc.Set(&memcache.Item{Key: key, Value: dump})
     os.Stdout.Write(dump)
 }
 
 func loadFromCache(key string) *ResponseData {
     var reloaded  ResponseData
-    dump, ok := cache[key]
-    if !ok {
+
+    item, err := mc.Get(key)
+    if err!=nil {
         fmt.Println("key not found: ", key)
+        fmt.Println("Error:", err.Error())
         return nil
     }
+    dump := item.Value
     err1 := json.Unmarshal(dump, &reloaded)
     if err1 != nil {
         fmt.Println("error:", err1)
     }
-    fmt.Printf("%+v", reloaded)
     return &reloaded
 }
 
