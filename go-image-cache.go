@@ -2,15 +2,24 @@ package main
 
 import (
     "fmt"
+    "os"
     "net/http"
     "net/url"
-    "os"
-    "io"
+    "io/ioutil"
     "strings"
+    "encoding/json"
 )
 
+type ResponseData struct {
+    ContentType    string
+    Body []byte
+    StatusCode int
+}
+
+var cache = make(map[string][]byte)
+
 func main(){
-    http.HandleFunc("/", serveFromOrigin)
+    http.HandleFunc("/", serveResponse)
     fmt.Println("listening...")
     err := http.ListenAndServe(port(), nil)
     if err != nil {
@@ -18,25 +27,56 @@ func main(){
     }
 }
 
-func serveFromOrigin(w http.ResponseWriter, r *http.Request) {
-    resp := loadFromOrigin(r.URL)
-    tunnelResponse(resp, w)
+func serveResponse(w http.ResponseWriter, r *http.Request) {
+    cacheKey := r.URL.String()
+    responseData := loadFromCache(cacheKey)
+
+    if responseData == nil {
+        responseData = loadFromOrigin(r.URL)
+        cacheResponse(cacheKey, *responseData)
+    }
+
+    tunnelResponse(*responseData, w)
     addCorsHeaders(w)
+}
+
+
+func cacheResponse(key string, data ResponseData) {
+
+    dump, err := json.Marshal(data)
+    if err != nil {
+        fmt.Println("error:", err)
+    }
+    cache[key] = dump
+    os.Stdout.Write(dump)
+}
+
+func loadFromCache(key string) *ResponseData {
+    var reloaded  ResponseData
+    dump, ok := cache[key]
+    if !ok {
+        fmt.Println("key not found: ", key)
+        return nil
+    }
+    err1 := json.Unmarshal(dump, &reloaded)
+    if err1 != nil {
+        fmt.Println("error:", err1)
+    }
+    fmt.Printf("%+v", reloaded)
+    return &reloaded
 }
 
 func addCorsHeaders(w http.ResponseWriter){
     w.Header().Set("Access-Control-Allow-Origin", "*")
 }
 
-func tunnelResponse(resp *http.Response, w http.ResponseWriter) {
-    w.WriteHeader(resp.StatusCode)
-
-    w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
-    defer resp.Body.Close()
-    io.Copy(w, resp.Body)
+func tunnelResponse(data ResponseData, w http.ResponseWriter) {
+    w.WriteHeader(data.StatusCode)
+    w.Header().Set("Content-Type", data.ContentType)
+    w.Write(data.Body)
 }
 
-func loadFromOrigin(url *url.URL) *http.Response {
+func loadFromOrigin(url *url.URL) *ResponseData {
     urlString := url.String()
 
     originUrl := strings.Replace(urlString, url.Host, originHost(), 1)
@@ -46,7 +86,17 @@ func loadFromOrigin(url *url.URL) *http.Response {
         fmt.Println("Error while loading: %s", err.Error())
         return nil
     }
-    return resp
+
+    defer resp.Body.Close()
+    body, err := ioutil.ReadAll(resp.Body)
+
+    resp.Body.Read(body)
+    data := ResponseData{
+        ContentType: resp.Header.Get("Content-Type"),
+        Body: body,
+        StatusCode: resp.StatusCode,
+    }
+    return &data
 }
 
 func originHost() string{
