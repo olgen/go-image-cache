@@ -4,6 +4,7 @@ import (
     "fmt"
     "log"
     "os"
+    "time"
     "net/http"
     "net/url"
     "io/ioutil"
@@ -18,8 +19,13 @@ type ResponseData struct {
     StatusCode int
 }
 
-var client = initMemcacheClient()
-var vBucket = (uint16)(0)
+var (
+  cacheControl = "max-age:290304000, public"
+  cacheSince = time.Now().Format(http.TimeFormat)
+	cacheUntil = time.Now().AddDate(60, 0, 0).Format(http.TimeFormat)
+  client = initMemcacheClient()
+  vBucket = (uint16)(0)
+ )
 
 func main(){
     http.HandleFunc("/", handleHttp)
@@ -76,6 +82,7 @@ func handleHttp(w http.ResponseWriter, r *http.Request) {
     }
 
     serveResponse(*responseData, w)
+    addCacheHeaders(w)
     addCorsHeaders(w)
 }
 
@@ -129,6 +136,11 @@ func deserialize(dump []byte) *ResponseData {
     return &data
 }
 
+func addCacheHeaders(w http.ResponseWriter) {
+    w.Header().Set("Cache-Control", cacheControl)
+		w.Header().Set("Last-Modified", cacheSince)
+		w.Header().Set("Expires", cacheUntil)
+}
 func addCorsHeaders(w http.ResponseWriter){
     w.Header().Set("Access-Control-Allow-Origin", "*")
 }
