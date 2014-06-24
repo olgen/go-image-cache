@@ -1,5 +1,5 @@
 {
-	"ImportPath": "github.com/olgen/go-image-cache",
+	"ImportPath": "github.com/pgtrns/go-image-cache",
 	"GoVersion": "go1.1.2",
 	"Deps": [
 		{
