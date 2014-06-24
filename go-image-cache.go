@@ -2,13 +2,14 @@ package main
 
 import (
     "fmt"
+    "log"
     "os"
     "net/http"
     "net/url"
     "io/ioutil"
     "strings"
     "encoding/json"
-    "github.com/bradfitz/gomemcache/memcache"
+    "github.com/dustin/gomemcached/client"
 )
 
 type ResponseData struct {
@@ -17,7 +18,8 @@ type ResponseData struct {
     StatusCode int
 }
 
-var mc = memcache.New(memcacheServer())
+var client = initMemcacheClient()
+var vBucket = (uint16)(0)
 
 func main(){
     http.HandleFunc("/", serveResponse)
@@ -26,6 +28,27 @@ func main(){
     if err != nil {
         panic(err)
     }
+}
+
+
+func initMemcacheClient() *memcached.Client {
+    host:= memcacheHost()
+    var client, err = memcached.Connect("tcp", host)
+    if err != nil {
+        log.Fatalf("Error connecting: %v", err)
+    }
+    log.Println("Connected to MEMCACHED_HOST=", host)
+
+    user := os.Getenv("MEMCACHED_USER")
+    pass := os.Getenv("MEMCACHED_PASS")
+    if user != "" {
+        resp, err := client.Auth(user, pass)
+        if err != nil {
+            log.Fatalf("auth error: %v", err)
+        }
+        log.Printf("Auth response = %v", resp)
+    }
+    return client
 }
 
 func serveResponse(w http.ResponseWriter, r *http.Request) {
@@ -46,26 +69,39 @@ func serveResponse(w http.ResponseWriter, r *http.Request) {
 
 
 func cacheResponse(key string, data ResponseData) {
-    dump, err := json.Marshal(data)
+
+    dump, err := serialize(data)
     if err != nil {
         fmt.Println("error:", err.Error())
+        return
     }
-    mc.Set(&memcache.Item{Key: key, Value: dump})
+    _, err = client.Set(vBucket, key, 0, 0, dump)
+    if err != nil {
+        log.Printf("Error setting key: %v", err)
+    }
 }
 
 func loadFromCache(key string) *ResponseData {
-    var reloaded  ResponseData
-    item, err := mc.Get(key)
-    if err!=nil {
-        fmt.Println("Error:", err.Error())
+    resp, err := client.Get(vBucket, key)
+    if err != nil {
+        log.Printf("Error retrieving key: %v", err)
         return nil
     }
-    dump := item.Value
-    err1 := json.Unmarshal(dump, &reloaded)
+    return deserialize(resp.Body)
+}
+
+func serialize(data ResponseData) ( []byte, error ){
+    return json.Marshal(data)
+}
+
+func deserialize(dump []byte) *ResponseData {
+    var data  ResponseData
+    err1 := json.Unmarshal(dump, &data)
     if err1 != nil {
         fmt.Println("error:", err1)
+        return nil
     }
-    return &reloaded
+    return &data
 }
 
 func addCorsHeaders(w http.ResponseWriter){
@@ -102,19 +138,20 @@ func loadFromOrigin(url *url.URL) *ResponseData {
 }
 
 // Config values
-func memcacheServer() string {
-    url := os.Getenv("MEMCACHED_URL")
+func memcacheHost() string {
+    url := os.Getenv("MEMCACHED_HOST")
     if  url == "" {
-        panic("No MEMCACHED_URL env-var given!")
+        panic("No MEMCACHED_HOST env-var given!")
     }
     return url
-
 }
+
 func originHost() string{
     origin := os.Getenv("ORIGIN")
     if origin == "" {
         panic("No ORIGIN env-var given!")
     }
+    log.Println("Preparing to serve from ORIGIN=", origin)
     return origin
 }
 
