@@ -14,13 +14,13 @@ import (
 )
 
 type ResponseData struct {
-    ContentType    string
+    ContentType string
     Body []byte
     StatusCode int
 }
 
 var (
-  cacheControl = "max-age:290304000, public"
+  cacheControl = "max-age:432000, public"
   cacheSince = time.Now().Format(http.TimeFormat)
 	cacheUntil = time.Now().AddDate(60, 0, 0).Format(http.TimeFormat)
   client = initMemcacheClient()
@@ -29,8 +29,9 @@ var (
 
 func main(){
     http.HandleFunc("/", handleHttp)
-    fmt.Println("listening...")
-    err := http.ListenAndServe(port(), nil)
+    port := portSetting()
+    log.Printf("Cache listening on port:%v", port)
+    err := http.ListenAndServe(port, nil)
     if err != nil {
         panic(err)
     }
@@ -82,8 +83,6 @@ func handleHttp(w http.ResponseWriter, r *http.Request) {
     }
 
     serveResponse(*responseData, w)
-    addCacheHeaders(w)
-    addCorsHeaders(w)
 }
 
 
@@ -136,19 +135,23 @@ func deserialize(dump []byte) *ResponseData {
     return &data
 }
 
-func addCacheHeaders(w http.ResponseWriter) {
-    w.Header().Set("Cache-Control", cacheControl)
-		w.Header().Set("Last-Modified", cacheSince)
-		w.Header().Set("Expires", cacheUntil)
-}
-func addCorsHeaders(w http.ResponseWriter){
-    w.Header().Set("Access-Control-Allow-Origin", "*")
-}
 
 func serveResponse(data ResponseData, w http.ResponseWriter) {
-    w.WriteHeader(data.StatusCode)
+    log.Printf("Setting Content-Type=%v", data.ContentType)
     w.Header().Set("Content-Type", data.ContentType)
+    addCacheHeaders(w)
+    addCorsHeaders(w)
+    w.WriteHeader(data.StatusCode)
     w.Write(data.Body)
+}
+
+func addCacheHeaders(w http.ResponseWriter) {
+    w.Header().Add("Cache-Control", cacheControl)
+    w.Header().Add("Last-Modified", cacheSince)
+    w.Header().Add("Expires", cacheUntil)
+}
+func addCorsHeaders(w http.ResponseWriter){
+    w.Header().Add("Access-Control-Allow-Origin", "*")
 }
 
 func loadFromOrigin(url *url.URL) *ResponseData {
@@ -184,7 +187,7 @@ func originHost() string{
     return origin
 }
 
-func port() string {
+func portSetting() string {
     port := os.Getenv("PORT")
     if port == "" {
         panic("No PORT env-var given!")
