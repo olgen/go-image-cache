@@ -32,15 +32,24 @@ func main(){
 
 
 func initMemcacheClient() *memcached.Client {
-    host:= memcacheHost()
-    var client, err = memcached.Connect("tcp", host)
+    memcacheUrl := os.Getenv("MEMCACHED_URL")
+
+    u, err := url.Parse(memcacheUrl)
+    if err!= nil{
+        log.Fatalf("Error parsing MEMCACHED_URL: %v", err)
+    }
+    protocol := u.Scheme
+    host := u.Host
+    user := u.User.Username()
+    pass, _ := u.User.Password()
+
+    client, err := memcached.Connect(protocol, host)
     if err != nil {
         log.Fatalf("Error connecting: %v", err)
     }
-    log.Println("Connected to MEMCACHED_HOST=", host)
 
-    user := os.Getenv("MEMCACHED_USER")
-    pass := os.Getenv("MEMCACHED_PASS")
+    log.Println("Connected to memcached host:", host)
+
     if user != "" {
         resp, err := client.Auth(user, pass)
         if err != nil {
@@ -138,14 +147,6 @@ func loadFromOrigin(url *url.URL) *ResponseData {
 }
 
 // Config values
-func memcacheHost() string {
-    url := os.Getenv("MEMCACHED_HOST")
-    if  url == "" {
-        panic("No MEMCACHED_HOST env-var given!")
-    }
-    return url
-}
-
 func originHost() string{
     origin := os.Getenv("ORIGIN")
     if origin == "" {
