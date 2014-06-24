@@ -22,7 +22,7 @@ var client = initMemcacheClient()
 var vBucket = (uint16)(0)
 
 func main(){
-    http.HandleFunc("/", serveResponse)
+    http.HandleFunc("/", handleHttp)
     fmt.Println("listening...")
     err := http.ListenAndServe(port(), nil)
     if err != nil {
@@ -40,8 +40,7 @@ func initMemcacheClient() *memcached.Client {
     }
     protocol := u.Scheme
     host := u.Host
-    user := u.User.Username()
-    pass, _ := u.User.Password()
+
 
     client, err := memcached.Connect(protocol, host)
     if err != nil {
@@ -50,17 +49,21 @@ func initMemcacheClient() *memcached.Client {
 
     log.Println("Connected to memcached host:", host)
 
-    if user != "" {
-        resp, err := client.Auth(user, pass)
-        if err != nil {
-            log.Fatalf("auth error: %v", err)
+    if u.User != nil {
+        user := u.User.Username()
+        pass, _ := u.User.Password()
+        if user != "" {
+            resp, err := client.Auth(user, pass)
+            if err != nil {
+                log.Fatalf("auth error: %v", err)
+            }
+            log.Printf("Auth response = %v", resp)
         }
-        log.Printf("Auth response = %v", resp)
     }
     return client
 }
 
-func serveResponse(w http.ResponseWriter, r *http.Request) {
+func handleHttp(w http.ResponseWriter, r *http.Request) {
     cacheKey := r.URL.String()
     responseData := loadFromCache(cacheKey)
 
@@ -72,22 +75,35 @@ func serveResponse(w http.ResponseWriter, r *http.Request) {
         fmt.Println("Serving from cache: ", cacheKey)
     }
 
-    tunnelResponse(*responseData, w)
+    serveResponse(*responseData, w)
     addCorsHeaders(w)
 }
 
 
+const cacheLimit = 1024 * 1024 // memcached limit of 1MB
 func cacheResponse(key string, data ResponseData) {
+    if data.StatusCode != 200 {
+        log.Printf("Not a success response: StatusCode=%v, not caching!", data.StatusCode)
+        return
+    }
 
     dump, err := serialize(data)
     if err != nil {
-        fmt.Println("error:", err.Error())
+        fmt.Println("Serialization error:", err.Error())
         return
     }
+
+    size := len(dump)
+    if size >= cacheLimit {
+        log.Printf("dump is too big: %v, not caching!", size)
+        return
+    }
+
     _, err = client.Set(vBucket, key, 0, 0, dump)
     if err != nil {
-        log.Printf("Error setting key: %v", err)
+        log.Printf("Error caching key: %v", err)
     }
+    log.Printf("Stored key=%v, size=%v to cache.", key, size)
 }
 
 func loadFromCache(key string) *ResponseData {
@@ -117,7 +133,7 @@ func addCorsHeaders(w http.ResponseWriter){
     w.Header().Set("Access-Control-Allow-Origin", "*")
 }
 
-func tunnelResponse(data ResponseData, w http.ResponseWriter) {
+func serveResponse(data ResponseData, w http.ResponseWriter) {
     w.WriteHeader(data.StatusCode)
     w.Header().Set("Content-Type", data.ContentType)
     w.Write(data.Body)
