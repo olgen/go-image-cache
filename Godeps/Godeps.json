@@ -3,9 +3,8 @@
 	"GoVersion": "go1.1.2",
 	"Deps": [
 		{
-			"ImportPath": "github.com/bradfitz/gomemcache/memcache",
-			"Comment": "release.r60-36-g4faecad",
-			"Rev": "4faecadd4f695d18a912ba110120fcfd460aca98"
+			"ImportPath": "github.com/dustin/gomemcached",
+			"Rev": "3bc2b0e8fd5d0304d37f246b38cde753803cee41"
 		}
 	]
 }
