@@ -17,7 +17,7 @@ type ResponseData struct {
     StatusCode int
 }
 
-var mc = memcache.New("localhost:11211")
+var mc = memcache.New(memcacheServer())
 
 func main(){
     http.HandleFunc("/", serveResponse)
@@ -46,21 +46,17 @@ func serveResponse(w http.ResponseWriter, r *http.Request) {
 
 
 func cacheResponse(key string, data ResponseData) {
-
     dump, err := json.Marshal(data)
     if err != nil {
-        fmt.Println("error:", err)
+        fmt.Println("error:", err.Error())
     }
     mc.Set(&memcache.Item{Key: key, Value: dump})
-    os.Stdout.Write(dump)
 }
 
 func loadFromCache(key string) *ResponseData {
     var reloaded  ResponseData
-
     item, err := mc.Get(key)
     if err!=nil {
-        fmt.Println("key not found: ", key)
         fmt.Println("Error:", err.Error())
         return nil
     }
@@ -105,6 +101,15 @@ func loadFromOrigin(url *url.URL) *ResponseData {
     return &data
 }
 
+// Config values
+func memcacheServer() string {
+    url := os.Getenv("MEMCACHED_URL")
+    if  url == "" {
+        panic("No MEMCACHED_URL env-var given!")
+    }
+    return url
+
+}
 func originHost() string{
     origin := os.Getenv("ORIGIN")
     if origin == "" {
