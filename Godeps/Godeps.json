@@ -1,5 +1,11 @@
 {
 	"ImportPath": "github.com/olgen/go-image-cache",
 	"GoVersion": "go1.1.2",
-	"Deps": []
+	"Deps": [
+		{
+			"ImportPath": "github.com/bradfitz/gomemcache/memcache",
+			"Comment": "release.r60-36-g4faecad",
+			"Rev": "4faecadd4f695d18a912ba110120fcfd460aca98"
+		}
+	]
 }
