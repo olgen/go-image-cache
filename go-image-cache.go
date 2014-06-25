@@ -135,7 +135,6 @@ func deserialize(dump []byte) *ResponseData {
     return &data
 }
 
-
 func serveResponse(data ResponseData, w http.ResponseWriter) {
     log.Printf("Setting Content-Type=%v", data.ContentType)
     w.Header().Set("Content-Type", data.ContentType)
@@ -158,7 +157,7 @@ func loadFromOrigin(url *url.URL) *ResponseData {
     urlString := url.String()
 
     originUrl := strings.Replace(urlString, url.Host, originHost(), 1)
-    fmt.Println("Loading from url=", originUrl )
+    fmt.Println("Loading from origin url=", originUrl )
     resp, err := http.Get(originUrl)
     if err != nil {
         fmt.Println("Error while loading: %s", err.Error())
@@ -183,7 +182,6 @@ func originHost() string{
     if origin == "" {
         panic("No ORIGIN env-var given!")
     }
-    log.Println("Preparing to serve from ORIGIN=", origin)
     return origin
 }
 
