@@ -11,6 +11,7 @@ import (
     "strings"
     "encoding/json"
     "github.com/dustin/gomemcached/client"
+    "github.com/yvasiyarov/gorelic"
 )
 
 type ResponseData struct {
@@ -23,12 +24,20 @@ var (
   cacheControl = "max-age:432000, public"
   cacheSince = time.Now().Format(http.TimeFormat)
 	cacheUntil = time.Now().AddDate(60, 0, 0).Format(http.TimeFormat)
-  client = initMemcacheClient()
   vBucket = (uint16)(0)
+  client = initMemcacheClient()
+  newRelicAgent = initNewRelicAgent()
  )
 
 func main(){
-    http.HandleFunc("/", handleHttp)
+
+    handler := handleHttp
+    if newRelicAgent != nil{
+        log.Println("Wrapping request handler with newRelicAgent")
+        handler = newRelicAgent.WrapHTTPHandlerFunc(handler)
+    }
+    http.HandleFunc("/", handler)
+
     port := portSetting()
     log.Printf("Cache listening on port:%v", port)
     err := http.ListenAndServe(port, nil)
@@ -37,6 +46,21 @@ func main(){
     }
 }
 
+func initNewRelicAgent() *gorelic.Agent {
+    license := os.Getenv("NEW_RELIC_LICENSE_KEY")
+    if license == "" {
+        log.Println("No NEW_RELIC_LICENSE_KEY found - newRelicAgent will not be active!")
+        return nil
+    }
+
+    newRelicAgent := gorelic.NewAgent()
+    newRelicAgent.Verbose = true
+    newRelicAgent.NewrelicLicense = license
+    newRelicAgent.NewrelicName = os.Getenv("NEW_RELIC_APP_NAME")
+    newRelicAgent.CollectHTTPStat = true
+    newRelicAgent.Run()
+    return newRelicAgent
+}
 
 func initMemcacheClient() *memcached.Client {
     memcacheUrl := os.Getenv("MEMCACHED_URL")
@@ -135,7 +159,6 @@ func deserialize(dump []byte) *ResponseData {
     return &data
 }
 
-
 func serveResponse(data ResponseData, w http.ResponseWriter) {
     log.Printf("Setting Content-Type=%v", data.ContentType)
     w.Header().Set("Content-Type", data.ContentType)
@@ -158,7 +181,7 @@ func loadFromOrigin(url *url.URL) *ResponseData {
     urlString := url.String()
 
     originUrl := strings.Replace(urlString, url.Host, originHost(), 1)
-    fmt.Println("Loading from url=", originUrl )
+    fmt.Println("Loading from origin url=", originUrl )
     resp, err := http.Get(originUrl)
     if err != nil {
         fmt.Println("Error while loading: %s", err.Error())
@@ -183,7 +206,6 @@ func originHost() string{
     if origin == "" {
         panic("No ORIGIN env-var given!")
     }
-    log.Println("Preparing to serve from ORIGIN=", origin)
     return origin
 }
 
