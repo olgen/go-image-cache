@@ -16,3 +16,7 @@ Needs following ENV-variables:
     export ORIGIN=http://origin.server.com
     export PORT=9191
 
+Following ENV-variables are optional:
+
+    export NEW_RELIC_LICENSE_KEY='your new relic key'
+    export NEW_RELIC_APP_NAME='your app name'
